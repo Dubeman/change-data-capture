@@ -1,0 +1,148 @@
+version: '3.8'  # Specifies the version of the Docker Compose file format
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0  # Uses the Confluent Zookeeper image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    hostname: zookeeper  # Sets the hostname of the container
+    container_name: zookeeper  # Names the container
+    ports:
+      - '2181:2181'  # Maps port 2181 on the host to port 2181 in the container
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181  # Sets the client port for Zookeeper
+      ZOOKEEPER_TICK_TIME: 2000  # Sets the tick time for Zookeeper
+    healthcheck:
+      test: echo srvr | nc zookeeper 2181 || exit 1  # Health check command
+      start_period: 10s  # Waits 10 seconds before starting health checks
+      retries: 20  # Retries the health check 20 times before considering the service unhealthy
+      interval: 10s  # Runs the health check every 10 seconds
+    networks:
+      dubeman:  # Connects to the 'dubeman' network
+
+  broker:
+    image: confluentinc/cp-kafka:7.4.0  # Uses the Confluent Kafka image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    hostname: broker  # Sets the hostname of the container
+    container_name: broker  # Names the container
+    ports:
+      - '29092:29092'  # Maps port 29092 on the host to port 29092 in the container
+      - '9092:9092'  # Maps port 9092 on the host to port 9092 in the container
+      - '9101:9101'  # Maps port 9101 on the host to port 9101 in the container
+    environment:
+      KAFKA_BROKER_ID: 1  # Sets the broker ID
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'  # Connects to Zookeeper
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT  # Sets listener security protocols
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092  # Advertises listeners
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Sets the replication factor for the offsets topic
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1  # Sets the minimum in-sync replicas for the transaction state log
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1  # Sets the replication factor for the transaction state log
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0  # Sets the initial rebalance delay for consumer groups
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'  # Enables auto-creation of topics
+      KAFKA_JMX_PORT: 9101  # Sets the JMX port
+      KAFKA_JMX_HOSTNAME: localhost  # Sets the JMX hostname
+    healthcheck:
+      test: nc -z localhost 9092 || exit -1  # Health check command
+      start_period: 15s  # Waits 15 seconds before starting health checks
+      interval: 5s  # Runs the health check every 5 seconds
+      timeout: 10s  # Sets the timeout for the health check to 10 seconds
+      retries: 10  # Retries the health check 10 times before considering the service unhealthy
+    networks:
+      dubeman:  # Connects to the 'dubeman' network
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.4.0  # Uses the Confluent Control Center image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    hostname: control-center  # Sets the hostname of the container
+    container_name: control-center  # Names the container
+    depends_on:
+      broker:
+        condition: service_healthy  # Waits for the broker service to be healthy before starting
+    ports:
+      - "9021:9021"  # Maps port 9021 on the host to port 9021 in the container
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'  # Sets the bootstrap servers for Control Center
+      CONTROL_CENTER_REPLICATION_FACTOR: 1  # Sets the replication factor for Control Center
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1  # Sets the number of partitions for internal topics
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1  # Sets the number of partitions for monitoring interceptor topics
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1  # Sets the replication factor for Confluent metrics topics
+      CONFLIENT_METRICS_ENABLE: 'false'  # Disables Confluent metrics
+      PORT: 9021  # Sets the port for Control Center
+    networks:
+      - dubeman  # Connects to the 'dubeman' network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9021/health" ]  # Health check command
+      interval: 30s  # Runs the health check every 30 seconds
+      timeout: 10s  # Sets the timeout for the health check to 10 seconds
+      retries: 5  # Retries the health check 5 times before considering the service unhealthy
+
+  debezium:
+    image: debezium/connect:latest  # Uses the Debezium Connect image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    container_name: debezium  # Names the container
+    hostname: debezium  # Sets the hostname of the container
+    depends_on:
+      postgres:
+        condition: service_healthy  # Waits for the PostgreSQL service to be healthy before starting
+      broker:
+        condition: service_healthy  # Waits for the broker service to be healthy before starting
+    ports:
+      - '8093:8083'  # Maps port 8093 on the host to port 8083 in the container
+    environment:
+      BOOTSTRAP_SERVERS: broker:29092  # Sets the bootstrap servers for Debezium
+      CONNECT_REST_ADVERTISED_HOST_NAME: debezium  # Sets the advertised host name for Debezium
+      GROUP_ID: 1  # Sets the group ID for Debezium
+      CONFIG_STORAGE_TOPIC: connect_configs  # Sets the config storage topic
+      STATUS_STORAGE_TOPIC: connect_statuses  # Sets the status storage topic
+      OFFSET_STORAGE_TOPIC: connect_offsets  # Sets the offset storage topic
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Sets the key converter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter  # Sets the value converter
+      ENABLE_DEBEZIUM_SCRIPTING: 'true'  # Enables Debezium scripting
+    healthcheck:
+      test:
+        [ 'CMD', 'curl', '--silent', '--fail', '-X', 'GET', 'http://localhost:8083/connectors', ]  # Health check command
+      start_period: 10s  # Waits 10 seconds before starting health checks
+      interval: 10s  # Runs the health check every 10 seconds
+      timeout: 5s  # Sets the timeout for the health check to 5 seconds
+      retries: 5  # Retries the health check 5 times before considering the service unhealthy
+    networks:
+      dubeman:  # Connects to the 'dubeman' network
+
+  debezium-ui:
+    image: debezium/debezium-ui:latest  # Uses the Debezium UI image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    container_name: debezium-ui  # Names the container
+    hostname: debezium-ui  # Sets the hostname of the container
+    depends_on:
+      debezium:
+        condition: service_healthy  # Waits for the Debezium service to be healthy before starting
+    ports:
+      - '8080:8080'  # Maps port 8080 on the host to port 8080 in the container
+    environment:
+      KAFKA_CONNECT_URIS: http://debezium:8083  # Sets the Kafka Connect URIs for Debezium UI
+    networks:
+      dubeman:  # Connects to the 'dubeman' network
+
+  postgres:
+    image: postgres:latest  # Uses the latest PostgreSQL image
+    platform: linux/amd64  # Ensures compatibility with ARM64 architecture
+    container_name: postgres  # Names the container
+    hostname: postgres  # Sets the hostname of the container
+    ports:
+      - '5432:5432'  # Maps port 5432 on the host to port 5432 in the container
+    environment:
+      POSTGRES_USER: postgres  # Sets the PostgreSQL user
+      POSTGRES_PASSWORD: postgres  # Sets the PostgreSQL password
+      POSTGRES_DB: financial_db  # Sets the PostgreSQL database name
+    command: [ 'postgres', '-c', 'wal_level=logical' ]  # Sets the PostgreSQL command with logical replication
+    healthcheck:
+      test: [ 'CMD', 'psql', '-U', 'postgres', '-c', 'SELECT 1' ]  # Health check command
+      interval: 10s  # Runs the health check every 10 seconds
+      timeout: 5s  # Sets the timeout for the health check to 5 seconds
+      retries: 5  # Retries the health check 5 times before considering the service unhealthy
+    networks:
+      dubeman:  # Connects to the 'dubeman' network
+
+networks:
+  dubeman:
+    name: dubeman  # Names the network 'dubeman'
+    driver: bridge  # Uses the bridge driver for the network
