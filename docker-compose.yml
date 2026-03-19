@@ -30,7 +30,7 @@ services:
       - '9101:9101'  # Maps port 9101 on the host to port 9101 in the container
     environment:
       KAFKA_BROKER_ID: 1  # Sets the broker ID
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'  # Connects to Zookeeper
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'  # Sets the bootstrap servers for Kafka
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT  # Sets listener security protocols
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092  # Advertises listeners
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Sets the replication factor for the offsets topic
@@ -44,7 +44,7 @@ services:
       test: nc -z localhost 9092 || exit -1  # Health check command
       start_period: 15s  # Waits 15 seconds before starting health checks
       interval: 5s  # Runs the health check every 5 seconds
-      timeout: 10s  # Sets the timeout for the health check to 10 seconds
+      timeout: 10s  # Sets the timeout for the health check
       retries: 10  # Retries the health check 10 times before considering the service unhealthy
     networks:
       dubeman:  # Connects to the 'dubeman' network
@@ -61,10 +61,10 @@ services:
       - "9021:9021"  # Maps port 9021 on the host to port 9021 in the container
     environment:
       CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'  # Sets the bootstrap servers for Control Center
-      CONTROL_CENTER_REPLICATION_FACTOR: 1  # Sets the replication factor for Control Center
+      CONTROL_CENTER_REPLICATION_FACTOR: 1  # Sets the replication factor for internal topics
       CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1  # Sets the number of partitions for internal topics
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1  # Sets the number of partitions for monitoring interceptor topics
-      CONFLUENT_METRICS_TOPIC_REPLICATION: 1  # Sets the replication factor for Confluent metrics topics
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1  # Sets the replication factor for internal metrics topics
       CONFLIENT_METRICS_ENABLE: 'false'  # Disables Confluent metrics
       PORT: 9021  # Sets the port for Control Center
     networks:
@@ -102,7 +102,7 @@ services:
         [ 'CMD', 'curl', '--silent', '--fail', '-X', 'GET', 'http://localhost:8083/connectors', ]  # Health check command
       start_period: 10s  # Waits 10 seconds before starting health checks
       interval: 10s  # Runs the health check every 10 seconds
-      timeout: 5s  # Sets the timeout for the health check to 5 seconds
+      timeout: 5s  # Sets the timeout for the health check
       retries: 5  # Retries the health check 5 times before considering the service unhealthy
     networks:
       dubeman:  # Connects to the 'dubeman' network
@@ -130,14 +130,14 @@ services:
     ports:
       - '5432:5432'  # Maps port 5432 on the host to port 5432 in the container
     environment:
-      POSTGRES_USER: postgres  # Sets the PostgreSQL user
-      POSTGRES_PASSWORD: postgres  # Sets the PostgreSQL password
-      POSTGRES_DB: financial_db  # Sets the PostgreSQL database name
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}  # Sets the PostgreSQL user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Sets the PostgreSQL password (set via .env)
+      POSTGRES_DB: ${POSTGRES_DB:-financial_db}  # Sets the PostgreSQL database name
     command: [ 'postgres', '-c', 'wal_level=logical' ]  # Sets the PostgreSQL command with logical replication
     healthcheck:
       test: [ 'CMD', 'psql', '-U', 'postgres', '-c', 'SELECT 1' ]  # Health check command
       interval: 10s  # Runs the health check every 10 seconds
-      timeout: 5s  # Sets the timeout for the health check to 5 seconds
+      timeout: 5s  # Sets the timeout for the health check
       retries: 5  # Retries the health check 5 times before considering the service unhealthy
     networks:
       dubeman:  # Connects to the 'dubeman' network
